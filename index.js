@@ -10,6 +10,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = 8000;
+app.use(bodyParser.json());
 
 const LOG_PATH = process.env.LOG_PATH || path.join(__dirname, 'logs/runtime.log');
 const CODEBASE_PATH = process.env.CODEBASE_PATH || path.join(__dirname, '../api');
@@ -17,22 +18,26 @@ const insightPath = path.join(__dirname, 'insight.txt');
 const commitDiffPath = path.join(__dirname, 'commit-diff.txt');
 const git = simpleGit(CODEBASE_PATH);
 
-app.use(bodyParser.text({ type: '*/*' }));
+app.use(bodyParser.json()); // For GitHub webhook JSON
+app.use(bodyParser.text({ type: 'text/plain' })); // Optional for log POST
 
 // ========= Webhook: Save Commit Info =========
+// Replace commit message only with full diff
 app.post('/webhook/github', async (req, res) => {
-    try {
-        const payload = JSON.parse(req.body);
-        const latestCommit = payload.commits?.slice(-1)[0];
-        const diff = latestCommit?.message || "No commit message found";
-        await fs.promises.writeFile(commitDiffPath, diff);
-        console.log("✅ Commit message captured");
-        res.json({ status: 'Commit diff saved' });
-    } catch (err) {
-        console.error("❌ Webhook error:", err.message);
-        res.status(500).json({ error: 'Invalid payload' });
-    }
+  try {
+    const latestCommitHash = req.body?.commits?.slice(-1)[0]?.id;
+    if (!latestCommitHash) throw new Error("No commit hash");
+
+    const diff = await git.diff([`${latestCommitHash}~1`, latestCommitHash]);
+    await fs.promises.writeFile(path.join(__dirname, 'commit-diff.txt'), diff);
+    console.log("✅ Full commit diff captured");
+    res.json({ status: 'Full diff saved' });
+  } catch (err) {
+    console.error("❌ Git diff error:", err.message);
+    res.status(500).json({ error: 'Failed to capture git diff' });
+  }
 });
+
 
 // ========= Manual Log Push =========
 app.post('/logs/stream', async (req, res) => {
