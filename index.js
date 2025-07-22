@@ -18,23 +18,44 @@ const insightPath = path.join(__dirname, 'insight.txt');
 const commitDiffPath = path.join(__dirname, 'commit-diff.txt');
 const git = simpleGit(CODEBASE_PATH);
 
-app.use(bodyParser.json()); // For GitHub webhook JSON
-app.use(bodyParser.text({ type: 'text/plain' })); // Optional for log POST
+app.use('/webhook/github', bodyParser.json());
+app.use('/logs/stream', bodyParser.text({ type: 'text/plain' }));
 
 // ========= Webhook: Save Commit Info =========
 // Replace commit message only with full diff
+const lastCommitFile = path.join(__dirname, 'last-commit.txt');
 app.post('/webhook/github', async (req, res) => {
   try {
     const latestCommitHash = req.body?.commits?.slice(-1)[0]?.id;
-    if (!latestCommitHash) throw new Error("No commit hash");
+    if (!latestCommitHash) throw new Error("No commit hash found in payload");
 
-    const diff = await git.diff([`${latestCommitHash}~1`, latestCommitHash]);
-    await fs.promises.writeFile(path.join(__dirname, 'commit-diff.txt'), diff);
-    console.log("✅ Full commit diff captured");
-    res.json({ status: 'Full diff saved' });
+    let previousCommit = null;
+    if (fs.existsSync(lastCommitFile)) {
+      previousCommit = await fs.promises.readFile(lastCommitFile, 'utf-8');
+    }
+
+    let diff = '';
+    if (previousCommit) {
+      try {
+        diff = await git.diff([`${previousCommit}`, latestCommitHash]);
+      } catch (err) {
+        console.warn('⚠️ Git diff failed, fallback to commit message');
+        diff = `⚠️ Git diff failed. Commit message:\n${req.body?.commits?.slice(-1)[0]?.message || 'N/A'}`;
+      }
+    } else {
+      // First run or no last commit stored yet
+      console.warn('⚠️ No previous commit found. Using commit message as fallback.');
+      diff = `🆕 Initial Commit:\n${req.body?.commits?.slice(-1)[0]?.message || 'N/A'}`;
+    }
+
+    await fs.promises.writeFile(commitDiffPath, diff);
+    await fs.promises.writeFile(lastCommitFile, latestCommitHash); // Always update
+    console.log("✅ Commit diff (or fallback) captured and saved");
+
+    res.json({ status: 'Commit diff processed' });
   } catch (err) {
-    console.error("❌ Git diff error:", err.message);
-    res.status(500).json({ error: 'Failed to capture git diff' });
+    console.error("❌ Webhook processing failed:", err.message);
+    res.status(500).json({ error: 'Git diff or hash processing failed' });
   }
 });
 
@@ -92,7 +113,8 @@ async function analyzeLogAndCode(logText) {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const res = await openai.chat.completions.create({
             model: 'gpt-4',
-            messages: [{ role: 'user', content: prompt }]
+            messages: [{ role: 'user', content: prompt }],
+            timeout: 30000, // 30 seconds timeout
         });
         const output = res.choices[0].message.content;
         console.log('🧠 AI Insight:\n', output);
@@ -108,15 +130,15 @@ function escapeRegExp(string) {
 
 // ========= Extract API Endpoint =========
 function extractEndpoint(logText) {
-    const match = logText.match(/"(GET|POST|PUT|DELETE|PATCH) (.*?) HTTP/);
-    return match ? `${match[1]} ${match[2]}` : 'Unknown';
+  const match = logText.match(/"(GET|POST|PUT|DELETE|PATCH)\s+([^"]+?)\s+HTTP/);
+  return match ? `${match[1]} ${match[2].split('?')[0]}` : 'Unknown';
 }
 
 // ========= Match Routes from app.use + router files =========
 async function findCodeForEndpoint(endpoint) {
   const [method, fullRoute] = endpoint.split(' ');
   const routeFiles = glob.sync(path.join(CODEBASE_PATH, '**/*.js'));
-  const controllerFiles = glob.sync(path.join(CODEBASE_PATH, '**/controller/**/*.js'));
+  const controllerFiles = glob.sync(path.join(CODEBASE_PATH, '**/{controller,controllers}/**/*.js'));
   let routeMatches = [];
   const basePathMap = new Map();
   const controllerFunctions = new Set();
@@ -134,7 +156,7 @@ async function findCodeForEndpoint(endpoint) {
   for (const file of routeFiles) {
     const content = await fs.promises.readFile(file, 'utf-8');
     for (const [routerVar, basePath] of basePathMap.entries()) {
-      const pattern = new RegExp(`${routerVar}\\.${method.toLowerCase()}\\(['"\`]([^'"\`]+)['"\`],\\s*(.*?)\\)`, 'g');
+      const pattern = new RegExp(`${escapeRegExp(routerVar)}\\.${method.toLowerCase()}\\(['"\`]([^'"\`]+)['"\`],\\s*(.*?)\\)`, 'g');
       let match;
       while ((match = pattern.exec(content)) !== null) {
         const subRoute = match[1];
@@ -162,7 +184,8 @@ async function findCodeForEndpoint(endpoint) {
   for (const file of controllerFiles) {
     const content = await fs.promises.readFile(file, 'utf-8');
     for (const fnName of controllerFunctions) {
-      const regex = new RegExp(`(async\\s+)?function\\s+${fnName}\\s*\\(|const\\s+${fnName}\\s*=\\s*async\\s*\\(`, 'g');
+      const regex = new RegExp(`(async\\s+)?function\\s+${fnName}\\s*\\(|const\\s+${fnName}\\s*=\\s*async\\s*\\(|exports\\.${fnName}\\s*=\\s*async\\s*\\(`, 'g');
+
       let match;
       while ((match = regex.exec(content)) !== null) {
         const lines = content.split('\n');
