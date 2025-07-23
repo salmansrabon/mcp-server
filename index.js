@@ -1,4 +1,3 @@
-// MCP Server with GitHub/Local Code Understanding (Enhanced with Modular Router Support)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -97,8 +96,7 @@ async function analyzeLogAndCode(logText) {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const res = await openai.chat.completions.create({
             model: 'gpt-4',
-            messages: [{ role: 'user', content: prompt }],
-            timeout: 30000, // 30 seconds timeout
+            messages: [{ role: 'user', content: prompt }]
         });
         const output = res.choices[0].message.content;
         console.log('🧠 AI Insight:\n', output);
