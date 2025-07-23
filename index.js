@@ -193,13 +193,35 @@ async function analyzeLogAndCode(logText) {
     const res = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+      frequency_penalty: 0.0,
     });
     const output = res.choices[0].message.content;
     console.log("❌ Error Stack: " + logText);
     console.log("🧠 AI Insight:\n", output);
-    await fs.promises.appendFile(
+
+    const insightEntry = {
+      date: new Date().toISOString(),
+      stackTrace: logText,
+      AIinsight: output,
+    };
+
+    const insightPath = "./insight.json";
+
+    // Read existing insights or create a new array if file doesn't exist
+    let existingInsights = [];
+    try {
+      const data = await fs.promises.readFile(insightPath, "utf-8");
+      existingInsights = JSON.parse(data);
+    } catch (readErr) {
+      if (readErr.code !== "ENOENT") throw readErr; // ignore file-not-found error
+    }
+
+    existingInsights.push(insightEntry);
+
+    await fs.promises.writeFile(
       insightPath,
-      `\n\n[${new Date().toISOString()}]\n${output}`
+      JSON.stringify(existingInsights, null, 2)
     );
   } catch (err) {
     console.error("❌ AI Analysis failed:", err.message);

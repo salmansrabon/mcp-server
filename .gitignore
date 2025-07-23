@@ -1,5 +1,6 @@
 .env
 insight.txt
+insight.json
 logs.txt
 node_modules/
 commit-diff.txt
