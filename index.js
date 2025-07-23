@@ -150,26 +150,43 @@ async function analyzeLogAndCode(logText) {
 
   const responseMatches = await findResponsePatternInCode(logText);
 
-  const prompt = `Analyze the following error log and suggest the root cause and fix based on the recent code commit and related API code.
-                  If stack trace is available, identify file name, function, and line number. Otherwise, infer based on API endpoint.
-                  Also, correlate any matching API responses from the codebase to understand business logic.
+  const prompt = `
+                You're an expert software analyst. Analyze the following commit diff, error log, and available stack trace to determine the root cause of the issue and recommend a fix.
 
-                  Latest Commit:
-                  ${diff}
+                If a stack trace is available, list:
+                - The relevant file(s), function(s), and line number(s) from the trace.
 
-                  Log:
-                  ${logText}
+                If no stack trace is found, infer the likely cause based on:
+                - The API endpoint in the log
+                - Related code snippets from the codebase
+                - The relevant file(s), function(s), and line number(s) if you find by searching on codebase.
 
-                  Stack Trace Findings:
-                  ${traceMatches || "❌ No stack trace found"}
+                Also:
+                - Match any API responses found in the codebase to understand the business logic
+                - Use that to support your reasoning
 
-                  Code Snippet:
-                  ${codeSnippet}
+                ---
 
-                  API Response Match:
-                  ${responseMatches || "❌ No relevant API response found"}
+                📝 Latest Commit Diff:
+                ${diff}
 
-                  Question: What's likely causing this issue and how to hotfix it? Please be specific.`;
+                🧾 Error Log:
+                ${logText}
+
+                🧵 Stack Trace:
+                ${traceMatches || "❌ No stack trace found"}
+
+                🧩 Matched Code Snippet:
+                ${codeSnippet}
+
+                🔁 API Response Match:
+                ${responseMatches || "❌ No relevant API response found"}
+
+                ---
+
+                ❓ **Question**: What is the most likely root cause of this issue?  
+                Please explain it clearly and provide a specific hotfix or workaround. Use bullet points if helpful.
+                `;
 
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -178,7 +195,7 @@ async function analyzeLogAndCode(logText) {
       messages: [{ role: "user", content: prompt }],
     });
     const output = res.choices[0].message.content;
-    console.log("❌ Error Stack: "+logText);
+    console.log("❌ Error Stack: " + logText);
     console.log("🧠 AI Insight:\n", output);
     await fs.promises.appendFile(
       insightPath,
