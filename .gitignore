@@ -2,3 +2,5 @@
 insight.txt
 logs.txt
 node_modules/
+commit-diff.txt
+last-commit.txt

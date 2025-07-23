@@ -1,84 +1,177 @@
-commit 5f3f6bdbed33b5fcc8690e46b9342377b9e1dde6
+commit d0ea4d8036122665ea837b8c9a427c5d11ae9310
 Author: salmansrabon <salmansrabon@gmail.com>
-Date:   Wed Jul 23 11:58:43 2025 +0600
+Date:   Wed Jul 23 14:41:12 2025 +0600
 
-    refactor: update route paths for user and transaction endpoints
+    refactor: enhance logging mechanism and improve error handling in app.js
 
 diff --git a/app.js b/app.js
-index 0496f60..8214f43 100644
+index 8214f43..f5bd8e7 100644
 --- a/app.js
 +++ b/app.js
-@@ -39,8 +39,8 @@ const userRoutes = require('./routes/user.route.js');
- const transactionRoutes = require('./routes/transaction.route.js');
- const defaultRoutes = require('./routes/default.route.js');
+@@ -1,59 +1,126 @@
+-const express = require('express');
++const express = require("express");
+ const app = express();
+-const morgan = require('morgan');
+-const cors = require('cors');
+-const swaggerUi = require('swagger-ui-express');
+-const fs = require('fs');
++const morgan = require("morgan");
++const cors = require("cors");
++const swaggerUi = require("swagger-ui-express");
++const fs = require("fs");
  
--app.use('/user', userRoutes);
--app.use('/transaction', transactionRoutes);
-+app.use('/', userRoutes);
-+app.use('/', transactionRoutes);
- app.use('/', defaultRoutes);
+-const { swaggerUserDocument, swaggerTrnxDocument } = require('./swagger/swagger.js');
+-const errorLogStream = fs.createWriteStream('./logs/runtime.log', { flags: 'a' });
++const {
++  swaggerUserDocument,
++  swaggerTrnxDocument,
++} = require("./swagger/swagger.js");
++const errorLogStream = fs.createWriteStream("./logs/runtime.log", {
++  flags: "a",
++});
++
++// ⛑️ Patch console.error to write to log (Sequelize errors, etc.)
++let lastConsoleError = ""; // Buffer to store latest error before request logs
++
++const originalConsoleError = console.error;
++console.error = function (...args) {
++  const logText =
++    args
++      .map((arg) =>
++        typeof arg === "string" ? arg : JSON.stringify(arg, null, 2)
++      )
++      .join(" ") + "\n";
++
++  lastConsoleError += logText; // Capture for request-based logging
++
++  originalConsoleError.apply(console, args); // Still show in console
++};
  
- // 404 error handling
-diff --git a/routes/transaction.route.js b/routes/transaction.route.js
-index 6f8ccaa..e1e39e3 100644
---- a/routes/transaction.route.js
-+++ b/routes/transaction.route.js
-@@ -8,15 +8,15 @@ const paymentController = require('../controllers/transactions/payment.controlle
+-// Middleware configurations
++// 🌐 Middleware configurations
+ app.use(express.urlencoded({ extended: true }));
+ app.use(express.json());
+-app.use(cors({ origin: '*' }));
+-app.use(morgan('dev')); // Log HTTP requests
+-// Log ONLY 4xx and 5xx responses
+-app.use(morgan('combined', {
+-  stream: {
+-    write: (message) => {
+-      // Extract status code from morgan's log line
+-      const statusCodeMatch = message.match(/" (\d{3}) /);
+-      if (statusCodeMatch) {
+-        const statusCode = parseInt(statusCodeMatch[1]);
+-        if ((statusCode >= 400 && statusCode < 600)) {
+-          errorLogStream.write(message);
+-        }
++app.use(cors({ origin: "*" }));
++app.use(morgan("dev"));
++
++// 🔗 Capture 4xx/5xx request logs BEFORE response is sent
++app.use((req, res, next) => {
++  const originalSend = res.send;
++  const originalStatus = res.status;
++
++  let statusCode = 200;
++
++  res.status = function (code) {
++    statusCode = code;
++    return originalStatus.apply(this, arguments);
++  };
++
++  res.send = function (body) {
++    if (statusCode >= 400 && statusCode < 600) {
++      const now = new Date().toISOString();
++      const logLine = `${req.ip} - - [${now}] "${req.method} ${req.originalUrl} HTTP/${req.httpVersion}" ${statusCode}\n`;
++      errorLogStream.write(logLine);
++
++      const stack = res.locals.errorDetails || lastConsoleError;
++      if (stack) {
++        errorLogStream.write(`Error Stack:\n${stack}\n`);
+       }
++
++      lastConsoleError = ""; // Clear buffer after use
+     }
+-  }
+-}));
  
- const router = express.Router();
++    return originalSend.apply(this, arguments);
++  };
++
++  next();
++});
++
++// 🧾 Also pipe structured request logs via morgan (optional)
++app.use(
++  morgan("combined", {
++    stream: {
++      write: (message) => {
++        // Only log to runtime.log if it’s 4xx or 5xx
++        const statusCodeMatch = message.match(/" (\d{3}) /);
++        if (statusCodeMatch) {
++          const status = parseInt(statusCodeMatch[1]);
++          if (status >= 400 && status < 600) {
++            // Suppressed because we're already logging manually above
++            return;
++          }
++        }
++      },
++    },
++  })
++);
  
--router.get('/list', authenticateJWT, transactionDetailsController.listTransactions);
--router.get('/search/:trnxId', authenticateJWT, transactionDetailsController.searchTransactionById);
--router.get('/statement/:account', authenticateJWT, transactionDetailsController.getStatementByAccount);
--router.get('/limit/:account', authenticateJWT, transactionDetailsController.getTransactionLimitByAccount);
--router.get('/balance/:account', authenticateJWT, transactionDetailsController.getBalanceByAccount);
-+router.get('/transaction/list', authenticateJWT, transactionDetailsController.listTransactions);
-+router.get('/transaction/search/:trnxId', authenticateJWT, transactionDetailsController.searchTransactionById);
-+router.get('/transaction/statement/:account', authenticateJWT, transactionDetailsController.getStatementByAccount);
-+router.get('/transaction/limit/:account', authenticateJWT, transactionDetailsController.getTransactionLimitByAccount);
-+router.get('/transaction/balance/:account', authenticateJWT, transactionDetailsController.getBalanceByAccount);
+-// Swagger setup
+-app.use('/api-docs/user', swaggerUi.serveFiles(swaggerUserDocument), swaggerUi.setup(swaggerUserDocument));
+-app.use('/api-docs/transaction', swaggerUi.serveFiles(swaggerTrnxDocument), swaggerUi.setup(swaggerTrnxDocument));
++// 🧭 Swagger
++app.use(
++  "/api-docs/user",
++  swaggerUi.serveFiles(swaggerUserDocument),
++  swaggerUi.setup(swaggerUserDocument)
++);
++app.use(
++  "/api-docs/transaction",
++  swaggerUi.serveFiles(swaggerTrnxDocument),
++  swaggerUi.setup(swaggerTrnxDocument)
++);
  
--router.post('/deposit', authenticateJWT, depositController.handleDeposit);
--router.post('/withdraw', authenticateJWT, withdrawController.handleWithdraw);
--router.post('/sendmoney', authenticateJWT, sendMoneyController.handleSendMoney);
--router.post('/payment', authenticateJWT, paymentController.handlePayment);
-+router.post('/transaction/deposit', authenticateJWT, depositController.handleDeposit);
-+router.post('/transaction/withdraw', authenticateJWT, withdrawController.handleWithdraw);
-+router.post('/transaction/sendmoney', authenticateJWT, sendMoneyController.handleSendMoney);
-+router.post('/transaction/payment', authenticateJWT, paymentController.handlePayment);
+-// Routes setup
+-const userRoutes = require('./routes/user.route.js');
+-const transactionRoutes = require('./routes/transaction.route.js');
+-const defaultRoutes = require('./routes/default.route.js');
++// 🚦 Routes
++const userRoutes = require("./routes/user.route.js");
++const transactionRoutes = require("./routes/transaction.route.js");
++const defaultRoutes = require("./routes/default.route.js");
  
- module.exports = router;
-diff --git a/routes/user.route.js b/routes/user.route.js
-index 8de385f..e88a6f4 100644
---- a/routes/user.route.js
-+++ b/routes/user.route.js
-@@ -4,17 +4,17 @@ const userController = require('../controllers/users/user.controller.js');
+-app.use('/', userRoutes);
+-app.use('/', transactionRoutes);
+-app.use('/', defaultRoutes);
++app.use("/", userRoutes);
++app.use("/", transactionRoutes);
++app.use("/", defaultRoutes);
  
- const router = express.Router();
+-// 404 error handling
++// ❌ 404 Not Found
+ app.use((req, res, next) => {
+-    const err = new Error(`${req.method} ${req.url} Not Found`);
+-    err.status = 404;
+-    next(err);
++  const err = new Error(`${req.method} ${req.url} Not Found`);
++  err.status = 404;
++  next(err);
+ });
  
--router.get('/list', publicAuthenticateJWT, userController.listUsers);
--router.get('/search/id/:id', publicAuthenticateJWT, userController.searchUserById);
--router.get('/search/phonenumber/:phone_number', publicAuthenticateJWT, userController.searchUserByPhoneNumber);
--router.post('/search/email', publicAuthenticateJWT, userController.searchUserByEmail);
--router.get('/search/:role', authenticateJWT, userController.searchUsersByRole);
--router.post('/create', authenticateJWT, userController.createUser);
--router.put('/update/:id', authenticateJWT, userController.updateUser);
--router.patch('/update/:id', authenticateJWT, userController.partialUpdateUser);
--router.delete('/delete/:id', authenticateJWT, userController.deleteUser);
--router.post('/login', userController.validateLoginData, userController.loginUser);
--router.post('/upload/:id', userController.upload, userController.uploadPhoto);
--router.get('/uploads/:file', userController.retrieveImage);
-+router.get('/user/list', publicAuthenticateJWT, userController.listUsers);
-+router.get('/user/search/id/:id', publicAuthenticateJWT, userController.searchUserById);
-+router.get('/user/search/phonenumber/:phone_number', publicAuthenticateJWT, userController.searchUserByPhoneNumber);
-+router.post('/user/search/email', publicAuthenticateJWT, userController.searchUserByEmail);
-+router.get('/user/search/:role', authenticateJWT, userController.searchUsersByRole);
-+router.post('/user/create', authenticateJWT, userController.createUser);
-+router.put('/user/update/:id', authenticateJWT, userController.updateUser);
-+router.patch('/user/update/:id', authenticateJWT, userController.partialUpdateUser);
-+router.delete('/user/delete/:id', authenticateJWT, userController.deleteUser);
-+router.post('/user/login', userController.validateLoginData, userController.loginUser);
-+router.post('/user/upload/:id', userController.upload, userController.uploadPhoto);
-+router.get('/user/uploads/:file', userController.retrieveImage);
+-// Global error handling
++// 🧯 Global Error Handler
+ app.use((err, req, res, next) => {
+-    console.error(err);
+-    res.status(err.status || 500).json({ error: { message: err.message } });
++  const errorDetails = err.stack || err.message || "Unknown Error";
++  res.locals.errorDetails = errorDetails;
++  console.error(errorDetails); // Already logs to file
++  res.status(err.status || 500).json({ error: { message: err.message } });
+ });
  
- module.exports = router;
+ module.exports = app;
