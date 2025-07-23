@@ -1,6 +1,5 @@
 const fs = require("fs/promises");
-const path = require("path");
-const { LOG_PATH, COMMIT_DIFF_PATH, INSIGHT_PATH } = require("../config/env");
+const { COMMIT_DIFF_PATH, INSIGHT_PATH } = require("../config/env");
 const { getInsightFromAI } = require("../services/openaiService");
 const extractEndpoint = require("../utils/extractEndpoint");
 const extractStackTrace = require("./extractStackTrace");

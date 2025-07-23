@@ -2,17 +2,24 @@ const express = require("express");
 const fs = require("fs/promises");
 const { LOG_PATH } = require("../config/env");
 const { analyzeLogAndCode } = require("../analyzers/analyzeLogAndCode");
-const { extractLastLogBlock } = require("../watchers/tailWatcher"); // reuse util if exported
+const { extractLastLogBlock } = require("../watchers/tailWatcher");
 
 const router = express.Router();
 
-router.post("/", async (req, res) => {
+// Apply express.text() middleware to ALL routes in this router
+router.use(express.text({ type: "*/*" }));
+
+router.post("/", express.text({ type: "*/*" }), async (req, res) => {
   const logText = req.body;
+
+  if (typeof logText !== "string" || !logText.trim()) {
+    return res.status(400).json({ error: "Empty or invalid log body" });
+  }
+
   try {
-    await fs.writeFile(LOG_PATH, logText);
+    await fs.writeFile('./logs/runtime.log', logText);
     console.log("📩 Log received via CI. Analyzing...");
 
-    // If you want to send only block, extract here:
     const block = extractLastLogBlock ? extractLastLogBlock(logText) : logText;
     await analyzeLogAndCode(block);
 
@@ -22,5 +29,6 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "Log write failed" });
   }
 });
+
 
 module.exports = router;
