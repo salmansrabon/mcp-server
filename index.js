@@ -28,34 +28,18 @@ app.post('/webhook/github', async (req, res) => {
   try {
     const latestCommitHash = req.body?.commits?.slice(-1)[0]?.id;
     if (!latestCommitHash) throw new Error("No commit hash found in payload");
+    console.log(`🔗 New commit detected: ${latestCommitHash}`);
 
-    let previousCommit = null;
-    if (fs.existsSync(lastCommitFile)) {
-      previousCommit = await fs.promises.readFile(lastCommitFile, 'utf-8');
-    }
-
-    let diff = '';
-    if (previousCommit) {
-      try {
-        diff = await git.diff([`${previousCommit}`, latestCommitHash]);
-      } catch (err) {
-        console.warn('⚠️ Git diff failed, fallback to commit message');
-        diff = `⚠️ Git diff failed. Commit message:\n${req.body?.commits?.slice(-1)[0]?.message || 'N/A'}`;
-      }
-    } else {
-      // First run or no last commit stored yet
-      console.warn('⚠️ No previous commit found. Using commit message as fallback.');
-      diff = `🆕 Initial Commit:\n${req.body?.commits?.slice(-1)[0]?.message || 'N/A'}`;
-    }
+    // Always capture full git show output
+    const diff = await git.show([latestCommitHash]);
 
     await fs.promises.writeFile(commitDiffPath, diff);
-    await fs.promises.writeFile(lastCommitFile, latestCommitHash); // Always update
-    console.log("✅ Commit diff (or fallback) captured and saved");
-
-    res.json({ status: 'Commit diff processed' });
+    await fs.promises.writeFile(lastCommitFile, latestCommitHash);
+    console.log("✅ Full commit diff (via git show) captured");
+    res.json({ status: 'Full commit diff saved' });
   } catch (err) {
     console.error("❌ Webhook processing failed:", err.message);
-    res.status(500).json({ error: 'Git diff or hash processing failed' });
+    res.status(500).json({ error: 'Git show failed' });
   }
 });
 

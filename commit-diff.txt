@@ -1,0 +1,19 @@
+commit 6fed8076d67af04f2610b2b75a16b67486569356
+Author: salmansrabon <salmansrabon@gmail.com>
+Date:   Wed Jul 23 11:40:55 2025 +0600
+
+    fix: enable logging in Sequelize configuration
+
+diff --git a/sequelizeModel/db.js b/sequelizeModel/db.js
+index 9292276..a98dc79 100644
+--- a/sequelizeModel/db.js
++++ b/sequelizeModel/db.js
+@@ -10,7 +10,7 @@ const password = process.env.DB_PASSWORD;
+ const sequelize = new Sequelize(db_name, db_user, password, {
+     host: host,
+     dialect: 'mysql',
+-    logging: false
++    logging: true
+ });
+ 
+ module.exports = { sequelize }
