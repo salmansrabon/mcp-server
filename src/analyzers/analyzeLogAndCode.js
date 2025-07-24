@@ -5,6 +5,8 @@ const extractEndpoint = require("../utils/extractEndpoint");
 const extractStackTrace = require("./extractStackTrace");
 const findCodeForEndpoint = require("./findCodeForEndpoint");
 const findResponsePattern = require("./findResponsePattern");
+const findRelevantCodeViaVector = require("./findRelevantCodeViaVector");
+const findRelevantCommitsViaVector = require("./findRelevantCommitsViaVector");
 
 const wrap = async (step, fn) => {
   try {
@@ -24,8 +26,14 @@ async function analyzeLogAndCode(logText) {
   const codeSnippet = await wrap("find code", () =>
     findCodeForEndpoint(endpoint)
   );
+  const vectorMatches = await wrap("semantic search", () =>
+    findRelevantCodeViaVector(logText)
+  );
   const responseMatches = await wrap("find response pattern", () =>
     findResponsePattern(logText)
+  );
+  const commitMatches = await wrap("semantic commit match", () =>
+    findRelevantCommitsViaVector(logText)
   );
 
   const prompt = `
@@ -60,6 +68,13 @@ async function analyzeLogAndCode(logText) {
             🔁 API Response Match:
             ${responseMatches || "❌ No relevant API response found"}
 
+            🔍 Vector-Based Code Match:
+            ${vectorMatches || "❌ No relevant code chunks found"}
+
+            🔂 Matched Commit(s) History:
+            ${commitMatches || "❌ No relevant commit diffs found"}
+
+
             ---
 
             ❓ Question: What is the most likely root cause of this issue?
@@ -67,6 +82,13 @@ async function analyzeLogAndCode(logText) {
             `;
 
   try {
+    const hasCommitMatch = commitMatches && !commitMatches.includes("❌");
+    console.log(
+      hasCommitMatch
+        ? "🧠 Commit-related cause detected!"
+        : "✅ Error unrelated to any recent commit."
+    );
+
     const output = await getInsightFromAI(prompt);
     console.log("🧠 AI Insight:\n", output);
 
@@ -81,11 +103,9 @@ async function analyzeLogAndCode(logText) {
     arr.push(insightEntry);
     await fs.writeFile(INSIGHT_PATH, JSON.stringify(arr, null, 2));
     return output;
-  } 
-  catch (err) {
+  } catch (err) {
     console.error("❌ AI Analysis failed:", err.message);
   }
-
 }
 
 // helper

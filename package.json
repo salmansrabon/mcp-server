@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test":"node index.js"
+    "test": "node index.js"
   },
   "keywords": [],
   "author": "",
@@ -13,10 +13,11 @@
   "description": "",
   "dependencies": {
     "body-parser": "^2.2.0",
+    "chromadb": "^3.0.10",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "glob": "^11.0.3",
-    "openai": "^5.10.1",
+    "openai": "^5.10.2",
     "simple-git": "^3.28.0"
   },
   "devDependencies": {

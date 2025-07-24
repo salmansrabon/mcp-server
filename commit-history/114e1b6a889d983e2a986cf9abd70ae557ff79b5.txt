@@ -1,0 +1,32 @@
+commit 114e1b6a889d983e2a986cf9abd70ae557ff79b5
+Author: salmansrabon <salmansrabon@gmail.com>
+Date:   Wed Jul 23 00:15:10 2025 +0600
+
+    fix: enable logging in Sequelize configuration and clean up server.js
+
+diff --git a/sequelizeModel/db.js b/sequelizeModel/db.js
+index 9292276..a98dc79 100644
+--- a/sequelizeModel/db.js
++++ b/sequelizeModel/db.js
+@@ -10,7 +10,7 @@ const password = process.env.DB_PASSWORD;
+ const sequelize = new Sequelize(db_name, db_user, password, {
+     host: host,
+     dialect: 'mysql',
+-    logging: false
++    logging: true
+ });
+ 
+ module.exports = { sequelize }
+diff --git a/server.js b/server.js
+index e2a0441..b1e65d8 100644
+--- a/server.js
++++ b/server.js
+@@ -3,5 +3,4 @@ const app = require('./app')
+ 
+ const port = process.env.PORT || 3000;
+ const server = http.createServer(app);
+-server.listen(port);
+-// test commit
+\ No newline at end of file
++server.listen(port);
+\ No newline at end of file

@@ -1,0 +1,19 @@
+commit 7397696a66fcb84b3dfba60eb863665bda99bd8c
+Author: SalmanRahman <salman.rahman@sharebox.no>
+Date:   Fri Jul 25 00:41:55 2025 +0600
+
+    fix: correct environment variable name for access token secret in user login
+
+diff --git a/controllers/users/user.controller.js b/controllers/users/user.controller.js
+index a3bf0a7..f478a10 100644
+--- a/controllers/users/user.controller.js
++++ b/controllers/users/user.controller.js
+@@ -242,7 +242,7 @@ exports.loginUser = async (req, res) => {
+ 
+         const token = jwt.sign(
+             { identifier: email, role: user.role },
+-            process.env.accessTokenSecret,
++            process.env.ACCESS_TOKEN_SECRET,
+             { expiresIn: process.env.expires_in }
+         );
+ 
