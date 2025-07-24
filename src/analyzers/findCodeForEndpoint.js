@@ -1,24 +1,52 @@
+// findCodeForEndpoint.js
 const fs = require("fs/promises");
 const path = require("path");
 const glob = require("glob");
 const { CODEBASE_PATH } = require("../config/env");
 
-async function findCodeForEndpoint(endpoint) {
-  const [method, fullRoute] = endpoint.split(" ");
+function normalizeEndpoint(ep) {
+  if (!ep) return { method: null, route: null };
+  if (typeof ep === "string") {
+    const parts = ep.trim().split(/\s+/);
+    return { method: parts[0], route: parts[1] || null };
+  }
+  // assume object form { method, route }
+  return { method: ep.method, route: ep.route };
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function readIfFile(file) {
+  const stat = await fs.lstat(file);
+  if (stat.isDirectory()) return null;
+  return fs.readFile(file, "utf-8");
+}
+
+async function findCodeForEndpoint(endpointInput) {
+  const { method, route: fullRoute } = normalizeEndpoint(endpointInput);
   if (!method || !fullRoute) return "❗ Could not parse endpoint.";
 
-  const routeFiles = glob.sync(path.join(CODEBASE_PATH, "**/*.js"));
-  const controllerFiles = glob.sync(
-    path.join(CODEBASE_PATH, "**/{controller,controllers}/**/*.js")
-  );
+  const routeFiles = glob.sync("**/*.js", {
+    cwd: CODEBASE_PATH,
+    absolute: true,
+    nodir: true,
+  });
+  const controllerFiles = glob.sync("**/{controller,controllers}/**/*.js", {
+    cwd: CODEBASE_PATH,
+    absolute: true,
+    nodir: true,
+  });
 
-  const basePathMap = new Map();     // routerVar => '/user'
+  const basePathMap = new Map(); // routerVar => '/user'
   const controllerFunctions = new Set();
   const routeMatches = [];
 
   // 1) Build map of app.use('/base', routerVar)
   for (const file of routeFiles) {
-    const content = await fs.readFile(file, "utf-8");
+    const content = await readIfFile(file);
+    if (!content) continue;
     for (const m of content.matchAll(/app\.use\(['"`]([^'"`]+)['"`],\s*(\w+)/g)) {
       basePathMap.set(m[2], m[1]);
     }
@@ -26,7 +54,9 @@ async function findCodeForEndpoint(endpoint) {
 
   // 2) Scan each router file for routerVar.get/post(...)
   for (const file of routeFiles) {
-    const content = await fs.readFile(file, "utf-8");
+    const content = await readIfFile(file);
+    if (!content) continue;
+
     for (const [routerVar, basePath] of basePathMap.entries()) {
       const pattern = new RegExp(
         `${escapeRegExp(routerVar)}\\.${method.toLowerCase()}\\(['"\`]([^'"\`]+)['"\`],\\s*(.*?)\\)`,
@@ -67,7 +97,9 @@ async function findCodeForEndpoint(endpoint) {
   // 3) Find controller definitions
   let controllerSnippets = "";
   for (const file of controllerFiles) {
-    const content = await fs.readFile(file, "utf-8");
+    const content = await readIfFile(file);
+    if (!content) continue;
+
     for (const fnName of controllerFunctions) {
       const regex = new RegExp(
         `(async\\s+)?function\\s+${fnName}\\s*\\(|const\\s+${fnName}\\s*=\\s*async\\s*\\(|exports\\.${fnName}\\s*=\\s*async\\s*\\(`,

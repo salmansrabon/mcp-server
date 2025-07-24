@@ -1,7 +1,7 @@
 const express = require("express");
 const fs = require("fs/promises");
 const { LOG_PATH } = require("../config/env");
-const { analyzeLogAndCode } = require("../analyzers/analyzeLogAndCode");
+const { analyzeLogAndCode } = require("../analyzers/analyzeLogAndCode.js");
 const { extractLastLogBlock } = require("../watchers/tailWatcher");
 
 const router = express.Router();
@@ -17,18 +17,21 @@ router.post("/", express.text({ type: "*/*" }), async (req, res) => {
   }
 
   try {
-    await fs.writeFile('./logs/runtime.log', logText);
+    await fs.writeFile("./logs/runtime.log", logText);
     console.log("📩 Log received via CI. Analyzing...");
 
     const block = extractLastLogBlock ? extractLastLogBlock(logText) : logText;
-    await analyzeLogAndCode(block);
-
+    try {
+      await analyzeLogAndCode(block);
+    } catch (err) {
+      console.error('🔥 analyzeLogAndCode failed:', err);
+      return res.status(500).json({ error: 'Analyze failed', code: err.code, path: err.path, step: err.step });
+    }
     res.json({ status: "Log received and analyzed" });
   } catch (err) {
     console.error("❌ Log write error:", err.message);
     res.status(500).json({ error: "Log write failed" });
   }
 });
-
 
 module.exports = router;

@@ -6,13 +6,17 @@ const extractStackTrace = require("./extractStackTrace");
 const findCodeForEndpoint = require("./findCodeForEndpoint");
 const findResponsePattern = require("./findResponsePattern");
 
-async function analyzeLogAndCode(logText) {
-  const diff = await safeRead(COMMIT_DIFF_PATH, "utf-8", "No diff available");
+const wrap = async (step, fn) => {
+  try { return await fn(); }
+  catch (e) { e.step = step; throw e; }
+};
 
-  const endpoint = extractEndpoint(logText);
-  const traceMatches = extractStackTrace(logText);
-  const codeSnippet = await findCodeForEndpoint(endpoint);
-  const responseMatches = await findResponsePattern(logText);
+async function analyzeLogAndCode(logText) {
+  const diff            = await wrap('read diff', () => safeRead(COMMIT_DIFF_PATH, 'utf-8', 'No diff available'));
+  const endpoint        = wrap('extract endpoint', () => extractEndpoint(logText));
+  const traceMatches    = wrap('stack trace', () => extractStackTrace(logText));
+  const codeSnippet     = await wrap('find code', () => findCodeForEndpoint(endpoint));
+  const responseMatches = await wrap('find response pattern', () => findResponsePattern(logText));
 
   const prompt = `
 You're an expert software analyst. Analyze the following commit diff, error log, and available stack trace to determine the root cause of the issue and recommend a fix.
@@ -74,9 +78,12 @@ Please explain clearly and provide a specific hotfix or workaround. Use bullet p
 // helper
 async function safeRead(file, enc, fallback) {
   try {
+    if (!file) return fallback;                   // undefined/null
+    const stat = await fs.lstat(file);
+    if (stat.isDirectory()) return fallback;      // avoid EISDIR
     return await fs.readFile(file, enc);
   } catch (e) {
-    if (e.code === "ENOENT") return fallback;
+    if (e.code === 'ENOENT' || e.code === 'EISDIR') return fallback;
     throw e;
   }
 }
