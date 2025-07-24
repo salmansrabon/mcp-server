@@ -46,15 +46,15 @@ app.post("/webhook/github", async (req, res) => {
 // ========= Manual Log Push =========
 app.post("/logs/stream", async (req, res) => {
   const logText = req.body;
-  //try {
+  try {
     await fs.promises.writeFile(LOG_PATH, logText);
     console.log("📩 Log received via CI. Analyzing...");
     await analyzeLogAndCode(logText);
     res.json({ status: "Log received and analyzed" });
-  // } catch (err) {
-  //   console.error("❌ Log write error:", err.message);
-  //   res.status(500).json({ error: "Log write failed" });
-  // }
+  } catch (err) {
+    console.error("❌ Log write error:", err.message);
+    res.status(500).json({ error: "Log write failed" });
+  }
 });
 
 function extractLastLogBlock(logText) {
