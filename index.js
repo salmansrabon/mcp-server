@@ -12,10 +12,8 @@ const app = express();
 const PORT = 8000;
 app.use(bodyParser.json());
 
-const LOG_PATH =
-  process.env.LOG_PATH || path.join(__dirname, "logs/runtime.log");
-const CODEBASE_PATH =
-  process.env.CODEBASE_PATH || path.join(__dirname, "../api");
+const LOG_PATH =process.env.LOG_PATH || path.join(__dirname, "logs/runtime.log");
+const CODEBASE_PATH =process.env.CODEBASE_PATH || path.join(__dirname, "../api");
 const insightPath = path.join(__dirname, "insight.txt");
 const commitDiffPath = path.join(__dirname, "commit-diff.txt");
 const git = simpleGit(CODEBASE_PATH);
@@ -48,15 +46,15 @@ app.post("/webhook/github", async (req, res) => {
 // ========= Manual Log Push =========
 app.post("/logs/stream", async (req, res) => {
   const logText = req.body;
-  try {
+  //try {
     await fs.promises.writeFile(LOG_PATH, logText);
     console.log("📩 Log received via CI. Analyzing...");
     await analyzeLogAndCode(logText);
     res.json({ status: "Log received and analyzed" });
-  } catch (err) {
-    console.error("❌ Log write error:", err.message);
-    res.status(500).json({ error: "Log write failed" });
-  }
+  // } catch (err) {
+  //   console.error("❌ Log write error:", err.message);
+  //   res.status(500).json({ error: "Log write failed" });
+  // }
 });
 
 function extractLastLogBlock(logText) {
@@ -241,7 +239,11 @@ function extractEndpoint(logText) {
 // ========= Match Routes from app.use + router files =========
 async function findCodeForEndpoint(endpoint) {
   const [method, fullRoute] = endpoint.split(" ");
-  const routeFiles = glob.sync(path.join(CODEBASE_PATH, "**/*.js"));
+  const routeFiles = glob.sync("**/*.js", {
+    cwd: CODEBASE_PATH,
+    absolute: true,
+    nodir: true,          // <-- important
+  });
   const controllerFiles = glob.sync(
     path.join(CODEBASE_PATH, "**/{controller,controllers}/**/*.js")
   );
