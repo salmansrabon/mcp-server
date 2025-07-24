@@ -7,54 +7,64 @@ const findCodeForEndpoint = require("./findCodeForEndpoint");
 const findResponsePattern = require("./findResponsePattern");
 
 const wrap = async (step, fn) => {
-  try { return await fn(); }
-  catch (e) { e.step = step; throw e; }
+  try {
+    return await fn();
+  } catch (e) {
+    e.step = step;
+    throw e;
+  }
 };
 
 async function analyzeLogAndCode(logText) {
-  const diff            = await wrap('read diff', () => safeRead(COMMIT_DIFF_PATH, 'utf-8', 'No diff available'));
-  const endpoint        = wrap('extract endpoint', () => extractEndpoint(logText));
-  const traceMatches    = wrap('stack trace', () => extractStackTrace(logText));
-  const codeSnippet     = await wrap('find code', () => findCodeForEndpoint(endpoint));
-  const responseMatches = await wrap('find response pattern', () => findResponsePattern(logText));
+  const diff = await wrap("read diff", () =>
+    safeRead(COMMIT_DIFF_PATH, "utf-8", "No diff available")
+  );
+  const endpoint = wrap("extract endpoint", () => extractEndpoint(logText));
+  const traceMatches = wrap("stack trace", () => extractStackTrace(logText));
+  const codeSnippet = await wrap("find code", () =>
+    findCodeForEndpoint(endpoint)
+  );
+  const responseMatches = await wrap("find response pattern", () =>
+    findResponsePattern(logText)
+  );
 
   const prompt = `
-You're an expert software analyst. Analyze the following commit diff, error log, and available stack trace to determine the root cause of the issue and recommend a fix.
+            You're an expert software analyst. Analyze the following commit diff, error log, and available stack trace to determine the root cause of the issue and recommend a fix.
 
-If a stack trace is available, list:
-- The relevant file(s), function(s), and line number(s) from the trace.
+            If a stack trace is available, list:
+            - The relevant file(s), function(s), and line number(s) from the trace.
 
-If no stack trace is found, infer the likely cause based on:
-- The API endpoint in the log
-- Related code snippets from the codebase
-- The relevant file(s), function(s), and line number(s) if you find them by scanning the codebase.
+            If no stack trace is found, infer the likely cause based on:
+            - The API endpoint in the log
+            - Related code snippets from the codebase
+            - The relevant file(s), function(s), and line number(s) if you find them by scanning the codebase.
 
-Also:
-- Match any API responses found in the codebase to understand the business logic
-- Use that to support your reasoning
+            Also:
+            - Match any API responses found in the codebase to understand the business logic
+            - Use that to support your reasoning
 
----
+            ---
 
-📝 Latest Commit Diff:
-${diff}
+            📝 Latest Commit Diff:
+            ${diff}
 
-🧾 Error Log:
-${logText}
+            🧾 Error Log:
+            ${logText}
 
-🧵 Stack Trace:
-${traceMatches || "❌ No stack trace found"}
+            🧵 Stack Trace:
+            ${traceMatches || "❌ No stack trace found"}
 
-🧩 Matched Code Snippet:
-${codeSnippet}
+            🧩 Matched Code Snippet:
+            ${codeSnippet}
 
-🔁 API Response Match:
-${responseMatches || "❌ No relevant API response found"}
+            🔁 API Response Match:
+            ${responseMatches || "❌ No relevant API response found"}
 
----
+            ---
 
-❓ Question: What is the most likely root cause of this issue?
-Please explain clearly and provide a specific hotfix or workaround. Use bullet points if helpful.
-`;
+            ❓ Question: What is the most likely root cause of this issue?
+            Please explain clearly and provide a specific hotfix or workaround. Use bullet points if helpful.
+            `;
 
   try {
     const output = await getInsightFromAI(prompt);
@@ -70,20 +80,23 @@ Please explain clearly and provide a specific hotfix or workaround. Use bullet p
     const arr = JSON.parse(existing);
     arr.push(insightEntry);
     await fs.writeFile(INSIGHT_PATH, JSON.stringify(arr, null, 2));
-  } catch (err) {
+    return output;
+  } 
+  catch (err) {
     console.error("❌ AI Analysis failed:", err.message);
   }
+
 }
 
 // helper
 async function safeRead(file, enc, fallback) {
   try {
-    if (!file) return fallback;                   // undefined/null
+    if (!file) return fallback; // undefined/null
     const stat = await fs.lstat(file);
-    if (stat.isDirectory()) return fallback;      // avoid EISDIR
+    if (stat.isDirectory()) return fallback; // avoid EISDIR
     return await fs.readFile(file, enc);
   } catch (e) {
-    if (e.code === 'ENOENT' || e.code === 'EISDIR') return fallback;
+    if (e.code === "ENOENT" || e.code === "EISDIR") return fallback;
     throw e;
   }
 }

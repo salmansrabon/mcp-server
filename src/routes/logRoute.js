@@ -22,12 +22,16 @@ router.post("/", express.text({ type: "*/*" }), async (req, res) => {
 
     const block = extractLastLogBlock ? extractLastLogBlock(logText) : logText;
     try {
-      await analyzeLogAndCode(block);
+      const AIinsight= await analyzeLogAndCode(block);
+      res.json({
+        status: "Log received and analyzed",
+        AIinsight,
+      });
     } catch (err) {
       console.error('🔥 analyzeLogAndCode failed:', err);
       return res.status(500).json({ error: 'Analyze failed', code: err.code, path: err.path, step: err.step });
     }
-    res.json({ status: "Log received and analyzed" });
+    
   } catch (err) {
     console.error("❌ Log write error:", err.message);
     res.status(500).json({ error: "Log write failed" });
