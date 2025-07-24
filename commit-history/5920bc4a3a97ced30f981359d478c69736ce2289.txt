@@ -1,0 +1,19 @@
+commit 5920bc4a3a97ced30f981359d478c69736ce2289
+Author: SalmanRahman <salman.rahman@sharebox.no>
+Date:   Fri Jul 25 03:10:07 2025 +0600
+
+    fix: disable logging in Sequelize configuration
+
+diff --git a/sequelizeModel/db.js b/sequelizeModel/db.js
+index 6f726ce..e480918 100644
+--- a/sequelizeModel/db.js
++++ b/sequelizeModel/db.js
+@@ -12,7 +12,7 @@ const sequelize = new Sequelize(db_name, db_user, password, {
+     host: host,
+     port: port,
+     dialect: 'mysql',
+-    logging: true
++    logging: false
+ });
+ 
+ module.exports = { sequelize }
