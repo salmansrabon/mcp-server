@@ -1,3 +1,4 @@
+// analyzers/analyzeLogAndCode.js
 const fs = require("fs/promises");
 const { COMMIT_DIFF_PATH, INSIGHT_PATH } = require("../config/env");
 const { getInsightFromAI } = require("../services/openaiService");
@@ -6,7 +7,7 @@ const extractStackTrace = require("../utils/extractStackTrace");
 const findCodeForEndpoint = require("./findCodeForEndpoint");
 const findResponsePattern = require("./findResponsePattern");
 const findRelevantCodeViaVector = require("./findRelevantCodeViaVector");
-const findRelevantCommitsViaVector = require("./findRelevantCommitsViaVector");
+const {findRelevantCommitsViaVector} = require("./findRelevantCommitsViaVector");
 
 const wrap = async (step, fn) => {
   try {
@@ -32,9 +33,15 @@ async function analyzeLogAndCode(logText) {
   const responseMatches = await wrap("find response pattern", () =>
     findResponsePattern(logText)
   );
-  const commitMatches = await wrap("semantic commit match", () =>
+  const commitMatchesRaw = await wrap("semantic commit match", () =>
     findRelevantCommitsViaVector(logText)
   );
+
+  // Extract commit ID from the matched commit string
+  const commitIdMatch = typeof commitMatchesRaw === "string"
+    ? commitMatchesRaw.match(/commit-history\/([a-f0-9]{40})/)
+    : null;
+  const commitId = commitIdMatch ? commitIdMatch[1] : "Not found";
 
   const prompt = `
             You're an expert software analyst. Analyze the following commit diff, error log, and available stack trace to determine the root cause of the issue and recommend a fix.
@@ -72,8 +79,7 @@ async function analyzeLogAndCode(logText) {
             ${vectorMatches || "❌ No relevant code chunks found"}
 
             🔂 Matched Commit(s) History:
-            ${commitMatches || "❌ No relevant commit diffs found"}
-
+            ${commitMatchesRaw || "❌ No relevant commit diffs found"}
 
             ---
 
@@ -82,7 +88,8 @@ async function analyzeLogAndCode(logText) {
             `;
 
   try {
-    const hasCommitMatch = commitMatches && !commitMatches.includes("❌");
+    const hasCommitMatch = typeof commitMatchesRaw === "string" && !commitMatchesRaw.includes("❌");
+
     console.log(
       hasCommitMatch
         ? "🧠 Commit-related cause detected!"
@@ -102,7 +109,27 @@ async function analyzeLogAndCode(logText) {
     const arr = JSON.parse(existing);
     arr.push(insightEntry);
     await fs.writeFile(INSIGHT_PATH, JSON.stringify(arr, null, 2));
-    return output;
+
+    // Try to extract filenames from AI response (fallback to trace)
+    const fileMatchesFromSummary =
+      output.match(/(?:File:|file:|Relevant file:)\s+([^\s\n]+)/g) || [];
+    const filenames = fileMatchesFromSummary.map((line) =>
+      line.split(":").pop().trim()
+    );
+
+    return {
+      summary: output,
+      commit_id: commitId,
+      filename: filenames.length
+        ? [...new Set(filenames)]
+        : Array.isArray(traceMatches)
+        ? traceMatches.map((f) => f.file || f)
+        : [],
+      commit_line:
+        typeof commitMatchesRaw === "string"
+          ? commitMatchesRaw.slice(0, 1000)
+          : "❌ No relevant commit diffs found",
+    };
   } catch (err) {
     console.error("❌ AI Analysis failed:", err.message);
   }
@@ -111,9 +138,9 @@ async function analyzeLogAndCode(logText) {
 // helper
 async function safeRead(file, enc, fallback) {
   try {
-    if (!file) return fallback; // undefined/null
+    if (!file) return fallback;
     const stat = await fs.lstat(file);
-    if (stat.isDirectory()) return fallback; // avoid EISDIR
+    if (stat.isDirectory()) return fallback;
     return await fs.readFile(file, enc);
   } catch (e) {
     if (e.code === "ENOENT" || e.code === "EISDIR") return fallback;

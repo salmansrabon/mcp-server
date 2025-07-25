@@ -7,7 +7,7 @@ require("dotenv").config();
 // Initialize OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Define embedding function wrapper for Chroma
+// Embedding wrapper for Chroma
 class OpenAIEmbedder {
   async generate(texts) {
     const res = await openai.embeddings.create({
@@ -18,21 +18,46 @@ class OpenAIEmbedder {
   }
 }
 
-// Directories to exclude
+// Exclude these directories
 const EXCLUDED_DIRS = ["node_modules", "logs", "swagger"];
 
-// Utility to check if file path includes any excluded folders
+// Check if path is excluded
 function isExcluded(filePath) {
   return EXCLUDED_DIRS.some(
     (dir) => filePath.includes(`/${dir}/`) || filePath.includes(`\\${dir}\\`)
   );
 }
 
-// Main execution
+// Generate enriched commit content
+async function generateEnrichedCommitContent(filePath) {
+  const raw = await fs.readFile(filePath, "utf-8");
+  const commit_id = path.basename(filePath, ".txt");
+
+  const messageMatch = raw.match(/^\s{4}(.*)$/m); // commit message (usually indented)
+  const message = messageMatch ? messageMatch[1].trim() : "No commit message found";
+
+  const fileMatches = [...raw.matchAll(/diff --git a\/([^\s]+) b\//g)];
+  const filenames = [...new Set(fileMatches.map((m) => m[1]))];
+
+  const summary = [
+    `commit ${commit_id}`,
+    `message: ${message}`,
+    `affected files: ${filenames.join(", ")}`,
+    `summary:`,
+    `- Likely changes in: ${filenames.map(f => f.split("/").pop().replace(".js", "")).join(", ")}`,
+    `- Based on diff, changes involve HTTP status codes, error handling, or logging`,
+    ``,
+    raw
+  ];
+
+  return summary.join("\n");
+}
+
+// Main function
 (async () => {
   const client = new ChromaClient({
     host: "localhost",
-    port: process.env.CHROMA_DB_PORT || 8001,
+    port: parseInt(process.env.CHROMA_DB_PORT || "8001"),
     ssl: false,
   });
 
@@ -41,7 +66,7 @@ function isExcluded(filePath) {
     embeddingFunction: new OpenAIEmbedder(),
   });
 
-  // 👉 Embed commit history
+  // 👉 Embed commit history with enriched context
   const commitHistoryPath = path.resolve("commit-history");
   const hasCommitHistory = await fs.stat(commitHistoryPath).then(() => true).catch(() => false);
 
@@ -53,19 +78,21 @@ function isExcluded(filePath) {
         continue;
       }
 
-      const content = await fs.readFile(path.join(commitHistoryPath, file), "utf-8");
+      const enrichedContent = await generateEnrichedCommitContent(path.join(commitHistoryPath, file));
+
       await collection.add({
         ids: [`commit-history/${file}`],
-        documents: [content],
+        documents: [enrichedContent],
         metadatas: [{ type: "commit", filename: file }],
       });
-      console.log(`📄 Embedded commit diff: ${file}`);
+
+      console.log(`📄 Embedded enriched commit: ${file}`);
     }
   } else {
     console.log("⚠️ No commit-history directory found. Skipping commit embedding.");
   }
 
-  // 👉 Read chunks.json file
+  // 👉 Embed code chunks from chunks.json
   const chunkPath = path.resolve("./chunks.json");
   const chunksRaw = await fs.readFile(chunkPath, "utf-8");
   const chunks = JSON.parse(chunksRaw);

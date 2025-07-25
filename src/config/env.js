@@ -7,6 +7,6 @@ module.exports = {
   CODEBASE_PATH: process.env.CODEBASE_PATH || path.join(__dirname, "../../../api"),
   COMMIT_DIFF_PATH: path.join(__dirname, "../../commit-diff.txt"),
   LAST_COMMIT_PATH: path.join(__dirname, "../../last-commit.txt"),
-  INSIGHT_PATH: path.join(__dirname, "../../insight.json"),
+  INSIGHT_PATH: path.join(__dirname, "../../logs/insight.json"),
   OPENAI_KEY: process.env.OPENAI_API_KEY
 };
