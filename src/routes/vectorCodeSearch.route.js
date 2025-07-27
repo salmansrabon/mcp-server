@@ -1,6 +1,7 @@
 // src/routes/vectorCodeSearch.route.js
 const express = require("express");
 const router = express.Router();
+router.use(express.text({ type: "*/*" }));
 
 const findRelevantCodeViaVector = require("../analyzers/findRelevantCodeViaVector");
 const { findRelevantCommitsViaVector } = require("../analyzers/findRelevantCommitsViaVector");
@@ -8,7 +9,7 @@ const extractStackTrace = require("../utils/extractStackTrace");
 
 router.post("/search/code", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const prompt  = req.body;
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid 'prompt' in request body" });

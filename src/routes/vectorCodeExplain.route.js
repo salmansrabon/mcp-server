@@ -2,6 +2,7 @@
 
 const express = require("express");
 const router = express.Router();
+router.use(express.text({ type: "*/*" }));
 
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -12,7 +13,7 @@ const extractStackTrace = require("../utils/extractStackTrace");
 
 router.post("/explain/code", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const prompt  = req.body;
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid 'prompt' in request body" });
